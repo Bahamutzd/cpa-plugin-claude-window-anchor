@@ -28,6 +28,12 @@ func jsonContentType() http.Header {
 	return http.Header{"Content-Type": []string{"application/json; charset=utf-8"}}
 }
 
+// htmlContentType returns the content-type header for HTML resource pages.
+// Serving dashboard HTML as application/json makes browsers render source.
+func htmlContentType() http.Header {
+	return http.Header{"Content-Type": []string{"text/html; charset=utf-8"}}
+}
+
 // renderDashboardHTML loads the embedded dashboard template. The HTML is
 // static; account data is injected by the browser via the status JSON fetch,
 // so no server-side interpolation can cause XSS.

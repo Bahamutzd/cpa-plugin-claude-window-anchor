@@ -92,7 +92,7 @@ func handleManagementHandle(raw []byte) ([]byte, error) {
 	case strings.HasSuffix(path, "/dashboard"): // resource route
 		return okResult(managementResponse{
 			StatusCode: http.StatusOK,
-			Headers:    jsonContentType(),
+			Headers:    htmlContentType(),
 			Body:       renderDashboardHTML(),
 		})
 	case strings.HasSuffix(path, "/status-data"): // resource route, dashboard fetch target
