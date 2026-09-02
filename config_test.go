@@ -96,6 +96,87 @@ func TestShouldClaimScheduler_AutoModeSingleAccountDoesNotClaim(t *testing.T) {
 	}
 }
 
+func TestParseConfig_ProviderDefaults(t *testing.T) {
+	cfg, err := parseConfig([]byte("timezone: \"UTC\"\nanchors: [\"06:30\"]\n"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	// Claude keeps working for installs that predate per-provider config.
+	if !cfg.providerEnabled(providerClaude) {
+		t.Fatal("claude should be enabled by default")
+	}
+	// Codex spends quota on a second provider, so it must be opt-in.
+	if cfg.providerEnabled(providerCodex) {
+		t.Fatal("codex must be opt-in")
+	}
+	if got := cfg.modelFor(providerCodex); got != defaultCodexModel {
+		t.Fatalf("codex model = %q, want %q", got, defaultCodexModel)
+	}
+	if cfg.CodexWindowMinutes != codexTargetWindowMinutes {
+		t.Fatalf("codex window = %d, want %d", cfg.CodexWindowMinutes, codexTargetWindowMinutes)
+	}
+}
+
+func TestParseConfig_ProviderAnchorsOverrideGlobal(t *testing.T) {
+	cfg, err := parseConfig([]byte(`
+timezone: "Asia/Shanghai"
+anchors: ["06:30", "11:30", "16:30"]
+providers:
+  codex:
+    enabled: true
+    anchors: ["07:00", "12:00"]
+    model: "gpt-5.4"
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !cfg.providerEnabled(providerCodex) {
+		t.Fatal("codex should be enabled")
+	}
+	codexAnchors := cfg.anchorsForAccount("codex-a@example.com", providerCodex)
+	if len(codexAnchors) != 2 || codexAnchors[0].Hour != 7 || codexAnchors[1].Hour != 12 {
+		t.Fatalf("codex anchors = %v, want 07:00/12:00", codexAnchors)
+	}
+	// Claude has no override and must keep the global list.
+	claudeAnchors := cfg.anchorsForAccount("claude-a@example.com", providerClaude)
+	if len(claudeAnchors) != 3 {
+		t.Fatalf("claude anchors = %v, want the global three", claudeAnchors)
+	}
+	if got := cfg.modelFor(providerCodex); got != "gpt-5.4" {
+		t.Fatalf("codex model = %q, want gpt-5.4", got)
+	}
+}
+
+// An unparseable provider anchor list must fail loudly: silently falling back
+// to the global anchors would anchor at times nobody configured.
+func TestParseConfig_InvalidProviderAnchorsFails(t *testing.T) {
+	_, err := parseConfig([]byte(`
+timezone: "UTC"
+anchors: ["06:30"]
+providers:
+  codex:
+    enabled: true
+    anchors: ["25:99"]
+`))
+	if err == nil {
+		t.Fatal("expected invalid provider anchor error")
+	}
+}
+
+// The legacy top-level model has always meant the Claude model.
+func TestModelFor_TopLevelModelAppliesToClaudeOnly(t *testing.T) {
+	cfg, err := parseConfig([]byte("timezone: \"UTC\"\nanchors: [\"06:30\"]\nmodel: \"claude-custom\"\n"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := cfg.modelFor(providerClaude); got != "claude-custom" {
+		t.Fatalf("claude model = %q, want claude-custom", got)
+	}
+	if got := cfg.modelFor(providerCodex); got != defaultCodexModel {
+		t.Fatalf("codex model = %q, must not inherit the claude model", got)
+	}
+}
+
 func TestShouldClaimScheduler_ExplicitModes(t *testing.T) {
 	if !shouldClaimScheduler(&Config{Scheduler: schedulerConfig{Mode: "always"}}) {
 		t.Fatal("always should claim")

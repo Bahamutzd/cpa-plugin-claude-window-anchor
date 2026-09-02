@@ -71,7 +71,7 @@ func handleLifecycle(raw []byte, isRegister bool) ([]byte, error) {
 			Version:          pluginVersion,
 			Author:           pluginAuthor,
 			GitHubRepository: pluginRepository,
-			ConfigFields:     []pluginapi.ConfigField{},
+			ConfigFields:     configFields(),
 		},
 		Capabilities: registrationCapabilities{
 			UsagePlugin:   true,

@@ -13,7 +13,7 @@ import (
 // Plugin identity constants. GitHubRepository must be non-empty for the host
 // to accept registration.
 const (
-	pluginVersion    = "0.1.3"
+	pluginVersion    = "0.2.0"
 	pluginAuthor     = "Bahamutzd"
 	pluginRepository = "https://github.com/Bahamutzd/cpa-plugin-claude-window-anchor"
 )
@@ -29,11 +29,16 @@ const (
 	defaultPollInterval   = "30s"
 	defaultAccountStagger = "5s"
 	defaultModel          = "claude-haiku-4-5-20251001"
+	defaultCodexModel     = "gpt-5.4-mini"
 	defaultMaxTokens      = 1
 	defaultPrompt         = "."
 	defaultSchedulerMode  = "auto"
 	defaultSchedulerHdr   = "X-Window-Anchor-Auth-Id"
 )
+
+// defaultAnchors is the fallback anchor set. A store install writes only
+// enabled + store, so without this the plugin would fail to register.
+var defaultAnchors = []string{"06:30", "11:30", "16:30"}
 
 // Config is the plugin configuration parsed from
 // plugins.configs.claude-window-anchor in config.yaml. Duration fields are
@@ -50,6 +55,18 @@ type Config struct {
 	Model     string `yaml:"model"`
 	MaxTokens int    `yaml:"max-tokens"`
 	Prompt    string `yaml:"prompt"`
+
+	// Providers holds per-provider overrides. Claude uses the top-level
+	// anchors/model when its section is absent; Codex is opt-in.
+	Providers providersConfig `yaml:"providers"`
+
+	// CodexWindowMinutes selects which Codex rate-limit window to anchor.
+	// Codex namespaces several windows per response and "primary" is often the
+	// weekly one, so the window is matched by declared length instead of name.
+	CodexWindowMinutes int `yaml:"codex-window-minutes"`
+	// CodexWindowTolerance is the accepted deviation when matching the window
+	// length above.
+	CodexWindowTolerance int `yaml:"codex-window-tolerance"`
 
 	Scheduler schedulerConfig `yaml:"scheduler"`
 	Accounts  accountsConfig  `yaml:"accounts"`
@@ -70,6 +87,27 @@ type Config struct {
 	staggerDuration  time.Duration
 	location         *time.Location
 	anchorTimes      []anchorTime
+	// providerAnchors holds the compiled per-provider anchor overrides. A
+	// provider missing from the map falls back to anchorTimes.
+	providerAnchors map[string][]anchorTime
+}
+
+// providersConfig groups per-provider settings. Every field is optional and
+// falls back to the top-level equivalent.
+type providersConfig struct {
+	Claude providerConfig `yaml:"claude"`
+	Codex  providerConfig `yaml:"codex"`
+}
+
+// providerConfig overrides anchoring behaviour for one upstream.
+type providerConfig struct {
+	// Enabled turns anchoring on for this provider. Claude defaults to on for
+	// backward compatibility; Codex must be enabled explicitly.
+	Enabled *bool `yaml:"enabled"`
+	// Anchors overrides the global anchor list for this provider only.
+	Anchors []string `yaml:"anchors"`
+	// Model overrides the anchor request model for this provider.
+	Model string `yaml:"model"`
 }
 
 type schedulerConfig struct {
@@ -163,14 +201,87 @@ func (c *Config) normalize() error {
 	if len(c.Anchors) == 0 {
 		// Store install only writes enabled + store. Without a default the
 		// plugin fails register/reconfigure and stays registered:false.
-		c.Anchors = []string{"06:30", "11:30", "16:30"}
+		c.Anchors = append([]string(nil), defaultAnchors...)
 	}
 	times, errParse := parseAnchors(c.Anchors)
 	if errParse != nil {
 		return fmt.Errorf("anchors: %w", errParse)
 	}
 	c.anchorTimes = times
+
+	if c.CodexWindowMinutes <= 0 {
+		c.CodexWindowMinutes = codexTargetWindowMinutes
+	}
+	if c.CodexWindowTolerance <= 0 {
+		c.CodexWindowTolerance = codexWindowToleranceMinutes
+	}
+
+	// Compile per-provider anchor overrides. An invalid list is a hard error:
+	// silently falling back to the global anchors would anchor a provider at
+	// times the operator never asked for.
+	c.providerAnchors = make(map[string][]anchorTime, len(providerSpecs))
+	for id, section := range map[string]providerConfig{
+		providerClaude: c.Providers.Claude,
+		providerCodex:  c.Providers.Codex,
+	} {
+		if len(section.Anchors) == 0 {
+			continue
+		}
+		providerTimes, errProvider := parseAnchors(normalizeAnchorInput(section.Anchors))
+		if errProvider != nil {
+			return fmt.Errorf("providers.%s.anchors: %w", id, errProvider)
+		}
+		c.providerAnchors[id] = providerTimes
+	}
 	return nil
+}
+
+// providerEnabled reports whether anchoring runs for a provider. Claude
+// defaults to on so existing installs keep working; Codex is opt-in.
+func (c *Config) providerEnabled(provider string) bool {
+	if c == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case providerClaude:
+		if c.Providers.Claude.Enabled != nil {
+			return *c.Providers.Claude.Enabled
+		}
+		return true
+	case providerCodex:
+		return c.Providers.Codex.Enabled != nil && *c.Providers.Codex.Enabled
+	default:
+		return false
+	}
+}
+
+// modelFor returns the anchor request model for a provider, preferring the
+// per-provider override, then the legacy top-level model (Claude only), then
+// the provider default.
+func (c *Config) modelFor(provider string) string {
+	spec, ok := specFor(provider)
+	if !ok {
+		return ""
+	}
+	if c == nil {
+		return spec.DefaultModel
+	}
+	var override string
+	switch spec.ID {
+	case providerClaude:
+		override = c.Providers.Claude.Model
+		if strings.TrimSpace(override) == "" {
+			// The top-level model predates per-provider config and has always
+			// meant the Claude model.
+			override = c.Model
+		}
+	case providerCodex:
+		override = c.Providers.Codex.Model
+	}
+	if trimmed := strings.TrimSpace(override); trimmed != "" {
+		return trimmed
+	}
+	return spec.DefaultModel
 }
 
 // parseDurationOr parses a duration string, falling back to fallback when the
@@ -263,9 +374,9 @@ func (c *Config) appliesTo(accountID string) bool {
 	return true
 }
 
-// anchorsForAccount returns the effective anchor list for an account,
-// applying per-account overrides when present.
-func (c *Config) anchorsForAccount(accountID string) []anchorTime {
+// anchorsForAccount returns the effective anchor list for an account.
+// Precedence: per-account override, then per-provider anchors, then global.
+func (c *Config) anchorsForAccount(accountID, provider string) []anchorTime {
 	for _, override := range c.Accounts.Overrides {
 		if strings.EqualFold(strings.TrimSpace(override.ID), accountID) {
 			if override.Enabled != nil && !*override.Enabled {
@@ -283,6 +394,9 @@ func (c *Config) anchorsForAccount(accountID string) []anchorTime {
 				})
 			}
 		}
+	}
+	if times, ok := c.providerAnchors[strings.ToLower(strings.TrimSpace(provider))]; ok && len(times) > 0 {
+		return times
 	}
 	return c.anchorTimes
 }

@@ -56,11 +56,17 @@ func evaluate(ctx context.Context, now time.Time) {
 	if cfg == nil || !cfg.Enabled {
 		return
 	}
-	accounts := listClaudeAccounts()
+	accounts := listAnchorAccounts()
 	if len(accounts) == 0 {
 		return
 	}
 	for i, account := range accounts {
+		// Register every supported account so the dashboard lists it before
+		// any traffic has produced a quota observation.
+		ensureAccount(account.ID, account.AuthIndex, account.Label, account.Provider)
+		if !cfg.providerEnabled(account.Provider) {
+			continue
+		}
 		if !cfg.appliesTo(account.ID) {
 			continue
 		}
@@ -69,7 +75,7 @@ func evaluate(ctx context.Context, now time.Time) {
 			continue
 		}
 		// Account-level anchor overrides may disable or re-schedule.
-		anchors := cfg.anchorsForAccount(account.ID)
+		anchors := cfg.anchorsForAccount(account.ID, account.Provider)
 		if len(anchors) == 0 {
 			continue
 		}
@@ -97,7 +103,7 @@ type slot struct {
 // dueSlot decides, for one account right now, whether an anchor slot is due
 // (immediately or after sleeping until the real reset boundary). It returns
 // false when nothing is due for this account at this moment.
-func dueSlot(cfg *Config, account claudeAccount, anchors []anchorTime, now time.Time) (slot, bool) {
+func dueSlot(cfg *Config, account anchoredAccount, anchors []anchorTime, now time.Time) (slot, bool) {
 	st := accountByID(account.ID)
 	var knownReset time.Time
 	if st != nil {
@@ -174,12 +180,18 @@ func probeAllAccounts(ctx context.Context) {
 	if cfg == nil || cfg.DryRun {
 		return
 	}
-	accounts := listClaudeAccounts()
+	accounts := listAnchorAccounts()
 	for _, account := range accounts {
+		if !cfg.providerEnabled(account.Provider) {
+			continue
+		}
 		if !cfg.appliesTo(account.ID) {
 			continue
 		}
-		logInfo("probe-on-start anchor", map[string]any{"auth_id": account.ID})
+		logInfo("probe-on-start anchor", map[string]any{
+			"auth_id":  account.ID,
+			"provider": account.Provider,
+		})
 		anchorAccount(ctx, cfg, account, windowKey("probe-start"), time.Now())
 		select {
 		case <-ctx.Done():

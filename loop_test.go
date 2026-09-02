@@ -7,7 +7,7 @@ import (
 
 func TestDueSlot_NoKnownReset_FiresAtAnchor(t *testing.T) {
 	cfg := &Config{location: mustLoc(t, "Asia/Shanghai"), catchUpDuration: 45 * time.Minute}
-	account := claudeAccount{ID: "loop-noknownreset_firesatanchor@example.com"}
+	account := anchoredAccount{ID: "loop-noknownreset_firesatanchor@example.com", Provider: providerClaude}
 	anchors := []anchorTime{{Hour: 16, Minute: 30}}
 	loc := mustLoc(t, "Asia/Shanghai")
 	// Just before the anchor: not yet actionable (the slot fires at 16:30).
@@ -28,7 +28,7 @@ func TestDueSlot_NoKnownReset_FiresAtAnchor(t *testing.T) {
 
 func TestDueSlot_AlreadyAnchoredSameKey_NoRepeat(t *testing.T) {
 	cfg := &Config{location: mustLoc(t, "Asia/Shanghai"), catchUpDuration: 45 * time.Minute}
-	account := claudeAccount{ID: "loop-alreadyanchoredsamekey_norepeat@example.com"}
+	account := anchoredAccount{ID: "loop-alreadyanchoredsamekey_norepeat@example.com", Provider: providerClaude}
 	anchors := []anchorTime{{Hour: 16, Minute: 30}}
 	now := time.Date(2026, 9, 2, 16, 30, 30, 0, mustLoc(t, "Asia/Shanghai"))
 	key := time.Date(2026, 9, 2, 16, 30, 0, 0, mustLoc(t, "Asia/Shanghai")).Format(windowKeyFormat)
@@ -42,7 +42,7 @@ func TestDueSlot_AlreadyAnchoredSameKey_NoRepeat(t *testing.T) {
 func TestDueSlot_DeferredToResetPlusGrace_Waits(t *testing.T) {
 	cfg := &Config{location: mustLoc(t, "Asia/Shanghai"), catchUpDuration: 45 * time.Minute,
 		graceDuration: 90 * time.Second, maxDeferDuration: time.Hour}
-	account := claudeAccount{ID: "loop-deferredtoresetplusgrace_waits@example.com"}
+	account := anchoredAccount{ID: "loop-deferredtoresetplusgrace_waits@example.com", Provider: providerClaude}
 	anchors := []anchorTime{{Hour: 16, Minute: 30}}
 	loc := mustLoc(t, "Asia/Shanghai")
 	now := time.Date(2026, 9, 2, 16, 30, 0, 0, loc)
@@ -62,7 +62,7 @@ func TestDueSlot_DeferredToResetPlusGrace_Waits(t *testing.T) {
 
 func TestDueSlot_CatchUpAfterRestart(t *testing.T) {
 	cfg := &Config{location: mustLoc(t, "Asia/Shanghai"), catchUpDuration: 45 * time.Minute}
-	account := claudeAccount{ID: "loop-catchupafterrestart@example.com"}
+	account := anchoredAccount{ID: "loop-catchupafterrestart@example.com", Provider: providerClaude}
 	anchors := []anchorTime{{Hour: 16, Minute: 30}}
 	loc := mustLoc(t, "Asia/Shanghai")
 	// Restart at 16:40 — 16:30 slot missed by 10 minutes, within catch-up.
@@ -79,7 +79,7 @@ func TestDueSlot_CatchUpAfterRestart(t *testing.T) {
 
 func TestDueSlot_CatchUpTooLate(t *testing.T) {
 	cfg := &Config{location: mustLoc(t, "Asia/Shanghai"), catchUpDuration: 45 * time.Minute}
-	account := claudeAccount{ID: "loop-catchuptoolate@example.com"}
+	account := anchoredAccount{ID: "loop-catchuptoolate@example.com", Provider: providerClaude}
 	anchors := []anchorTime{{Hour: 16, Minute: 30}}
 	loc := mustLoc(t, "Asia/Shanghai")
 	// 3 hours after the missed slot: too late, no catch-up.
@@ -93,7 +93,7 @@ func TestDueSlot_CatchUpTooLate(t *testing.T) {
 func TestDueSlot_BackoffScopedToFailedSlot(t *testing.T) {
 	cfg := &Config{location: mustLoc(t, "Asia/Shanghai"), catchUpDuration: 45 * time.Minute,
 		graceDuration: 90 * time.Second, maxDeferDuration: time.Hour}
-	account := claudeAccount{ID: "loop-backoffscopedtofailedslot@example.com"}
+	account := anchoredAccount{ID: "loop-backoffscopedtofailedslot@example.com", Provider: providerClaude}
 	anchors := []anchorTime{{Hour: 16, Minute: 30}}
 	loc := mustLoc(t, "Asia/Shanghai")
 	now := time.Date(2026, 9, 2, 16, 30, 0, 0, loc)

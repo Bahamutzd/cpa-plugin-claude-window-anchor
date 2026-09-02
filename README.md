@@ -1,14 +1,17 @@
 # cpa-plugin-claude-window-anchor
 
-A CPA (CLIProxyAPI) native C ABI plugin that **anchors Claude's 5-hour rolling
-quota window** to fixed local times.
+A CPA (CLIProxyAPI) native C ABI plugin that **anchors 5-hour rolling quota
+windows** to fixed local times, for both **Claude** and **Codex**.
 
-Claude Pro/Max usage windows are 5-hour rolling windows that start at the
+Claude Pro/Max and Codex usage windows are rolling windows that start at the
 first request of each window. Without anchoring, the boundaries drift with
 your usage pattern, so a heavy session can land at the tail of a window.
 This plugin pins the boundary to your schedule (e.g. `06:30 / 11:30 / 16:30
 Asia/Shanghai`) by sending a minimal request *right after the real window
 resets*, making the *next* window begin at your chosen time.
+
+Claude is anchored by default; Codex is opt-in via `providers.codex.enabled`
+and can run on its own anchor schedule.
 
 > This is *not* a cron that fires a request at a fixed time. It first
 > discovers the real `resets_at`, and only anchors once the window has
@@ -36,12 +39,21 @@ new window starts ≈ anchor time  ->  next resets_at ≈ anchor + 5h
 
 Key design points:
 
-- **Passive quota sensing via `usage_plugin` capability.** Every Claude
-  request — organic traffic *and* our own anchors — reports raw upstream
-  headers with `Anthropic-Ratelimit-Unified-Reset`, attributed per account
-  (`AuthID`). This is the only reliable source: `host.model.execute` response
-  headers are hidden behind `passthrough-headers` (default off), and a
-  plugin's own response interceptor is skipped for its own calls.
+- **Passive quota sensing via `usage_plugin` capability.** Every request —
+  organic traffic *and* our own anchors — reports raw upstream headers
+  attributed per account (`AuthID`): `Anthropic-Ratelimit-Unified-Reset` for
+  Claude, `X-Codex-*` for Codex. This is the only reliable source:
+  `host.model.execute` response headers are hidden behind
+  `passthrough-headers` (default off), and a plugin's own response interceptor
+  is skipped for its own calls.
+- **Codex windows are matched by length, never by name.** Codex reports
+  several rate-limit windows per response, and the one it labels `primary` is
+  frequently the *weekly* limit (`window_minutes: 10080`) while the 5-hour
+  window (`window_minutes: 300`) sits under an additional per-model limit.
+  Selecting `primary` would anchor against the weekly boundary, so the plugin
+  scans every window and picks the one whose declared length matches
+  `codex-window-minutes` (default 300). If no window matches, it reports the
+  weekly figure for display but never anchors off it.
 - **Subscription quota, not API billing.** Anchors go through
   `host.model.execute`, so CPA's Claude executor applies the full Claude Code
   CLI fingerprint for `sk-ant-oat` credentials — Anthropic counts them as
@@ -60,8 +72,8 @@ Key design points:
 ## Requirements
 
 - CPA v7.2.x or newer with plugin support (`plugins.enabled: true`)
-- Claude **OAuth** credentials (`sk-ant-oat` tokens). API-key credentials do
-  not have subscription quota windows.
+- Claude **OAuth** credentials (`sk-ant-oat` tokens) and/or Codex OAuth
+  credentials. API-key credentials do not have subscription quota windows.
 
 ## Installation
 
@@ -118,6 +130,22 @@ plugins:
       timezone: "Asia/Shanghai"
       anchors: ["06:30", "11:30", "16:30"]
 ```
+
+Adding Codex, on its own schedule:
+
+```yaml
+      providers:
+        claude:
+          enabled: true
+        codex:
+          enabled: true
+          anchors: ["07:00", "12:00", "17:00"]   # omit to share the global anchors
+          model: "gpt-5.4-mini"
+```
+
+These settings are also editable from the management center: open the plugin's
+**编辑配置 / Edit config** sheet, where `anchors` and `providers` render as
+editable fields (arrays and objects as JSON).
 
 ## Management dashboard
 

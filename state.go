@@ -15,6 +15,8 @@ type accountState struct {
 	AuthID    string
 	AuthIndex string
 	Label     string
+	// Provider is the host provider identifier this account belongs to.
+	Provider string `json:"provider,omitempty"`
 
 	// ResetsAt is the latest observed five-hour window reset time, zero if
 	// never observed.
@@ -64,7 +66,7 @@ var ledger = &stateLedger{
 }
 
 // ensureAccount returns the state entry for an account, creating it if needed.
-func ensureAccount(authID, authIndex, label string) *accountState {
+func ensureAccount(authID, authIndex, label, provider string) *accountState {
 	ledger.mu.Lock()
 	defer ledger.mu.Unlock()
 	entry, ok := ledger.byID[authID]
@@ -78,6 +80,9 @@ func ensureAccount(authID, authIndex, label string) *accountState {
 	}
 	if label != "" && entry.Label == "" {
 		entry.Label = label
+	}
+	if provider != "" {
+		entry.Provider = provider
 	}
 	entry.AuthID = authID
 	return entry

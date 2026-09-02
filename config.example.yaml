@@ -15,11 +15,33 @@ plugins:
 
       # Anchor slots (HH:MM in the timezone above). The plugin sends one
       # minimal request right after the real 5-hour window resets near each
-      # slot, pinning the next window to this time.
+      # slot, pinning the next window to this time. Providers without their
+      # own anchors below use this list.
       anchors:
         - "06:30"
         - "11:30"
         - "16:30"
+
+      # Per-provider settings. Claude is enabled by default so existing
+      # installs keep working; Codex must be turned on explicitly.
+      providers:
+        claude:
+          enabled: true
+          # anchors: ["06:30", "11:30", "16:30"]
+          # model: "claude-haiku-4-5-20251001"
+        codex:
+          enabled: false
+          # Codex can run on its own schedule; leave empty to share the
+          # global anchors above.
+          # anchors: ["07:00", "12:00", "17:00"]
+          model: "gpt-5.4-mini"
+
+      # Which Codex rate-limit window to anchor, matched by declared length in
+      # minutes. Codex reports several windows per response and the one it
+      # calls "primary" is frequently the weekly (10080-minute) limit, so the
+      # window is selected by length rather than by name.
+      codex-window-minutes: 300
+      codex-window-tolerance: 60
 
       # How long after the real reset to wait before anchoring (avoids
       # racing the server-side window boundary).
@@ -36,6 +58,7 @@ plugins:
 
       # Anchor request payload. Keep it tiny: max-tokens 1 + a one-char prompt
       # costs a few tokens while still registering as the window's first call.
+      # This model is the Claude one; use providers.codex.model for Codex.
       model: "claude-haiku-4-5-20251001"
       max-tokens: 1
       prompt: "."

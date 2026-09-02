@@ -3,6 +3,7 @@
 *.so
 *.dylib
 *.h
+*.exe
 dist/
 *.zip
 checksums.txt

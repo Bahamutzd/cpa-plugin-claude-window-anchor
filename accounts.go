@@ -32,9 +32,11 @@ type hostAuthGetResponse struct {
 	JSON      json.RawMessage `json:"json"`
 }
 
-// claudeAccount is a Claude credential with enough metadata to anchor.
-type claudeAccount struct {
+// anchorAccount is a credential with enough metadata to anchor, from any
+// supported provider.
+type anchoredAccount struct {
 	ID          string
+	Provider    string
 	AuthIndex   string
 	Label       string
 	Email       string
@@ -48,23 +50,25 @@ type claudeAccount struct {
 	AccessToken string
 }
 
-// listClaudeAccounts enumerates Claude credentials via host.auth.list and
-// augments them with host.auth.get (for label/email/token). Failures on
-// runtime-only credentials degrade gracefully: the account stays visible for
-// passive observation but is skipped for active probes.
-func listClaudeAccounts() []claudeAccount {
+// listAnchorAccounts enumerates credentials for every provider the plugin
+// supports and augments them with host.auth.get (for label/email/token).
+// Failures on runtime-only credentials degrade gracefully: the account stays
+// visible for passive observation but is skipped for active probes.
+func listAnchorAccounts() []anchoredAccount {
 	var listResp hostAuthListResponse
 	if errCall := callHost(pluginabi.MethodHostAuthList, hostAuthListRequest{}, &listResp); errCall != nil {
 		logWarn("host.auth.list failed", map[string]any{"error": errCall.Error()})
 		return nil
 	}
-	accounts := make([]claudeAccount, 0, len(listResp.Files))
+	accounts := make([]anchoredAccount, 0, len(listResp.Files))
 	for _, file := range listResp.Files {
-		if !strings.EqualFold(file.Provider, "claude") {
+		provider := strings.ToLower(strings.TrimSpace(file.Provider))
+		if _, supported := specFor(provider); !supported {
 			continue
 		}
-		entry := claudeAccount{
+		entry := anchoredAccount{
 			ID:          file.ID,
+			Provider:    provider,
 			AuthIndex:   file.AuthIndex,
 			Label:       file.Label,
 			Email:       file.Email,

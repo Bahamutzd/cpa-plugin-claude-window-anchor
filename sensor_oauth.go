@@ -47,7 +47,12 @@ type oauthUsageWindow struct {
 // probeOAuthUsage performs one active usage query for an account via
 // host.http.do, using the access token fetched by host.auth.get. Failures
 // degrade silently: the passive Tier 1 sensor remains authoritative.
-func probeOAuthUsage(account claudeAccount) {
+func probeOAuthUsage(account anchoredAccount) {
+	// The endpoint is Anthropic-specific; Codex credentials must never be sent
+	// to it. Codex quota arrives through the passive usage sensor instead.
+	if account.Provider != providerClaude {
+		return
+	}
 	if account.AuthIndex == "" || account.AccessToken == "" {
 		return
 	}

@@ -80,6 +80,8 @@ tr.disabled td { opacity: .5; }
 .warn { background: #fef3c7; color: #92400e; }
 .err { background: #c6574624; color: #8a3a30; }
 .muted { background: var(--bg-tertiary); color: var(--text-secondary); }
+.claude { background: #d977061f; color: #92400e; }
+.codex { background: #0ea5e91f; color: #075985; }
 .empty, #msg { color: var(--text-secondary); font-size: 13px; padding: 18px 12px; }
 #msg { padding: 10px 0 0; }
 </style>
@@ -97,6 +99,7 @@ tr.disabled td { opacity: .5; }
 <thead>
 <tr>
   <th>账号</th>
+  <th>服务</th>
   <th>5 小时重置</th>
   <th>状态</th>
   <th>周额度重置</th>
@@ -182,6 +185,12 @@ function fmt(value) {
   if (isNaN(date.getTime())) return esc(value);
   return esc(date.toLocaleString("zh-CN", { hour12: false }));
 }
+function providerBadge(provider) {
+  var key = String(provider || "").toLowerCase();
+  if (key === "claude") return '<span class="badge claude">Claude</span>';
+  if (key === "codex") return '<span class="badge codex">Codex</span>';
+  return '<span class="badge muted">' + esc(provider || "-") + "</span>";
+}
 function statusBadge(status) {
   var key = String(status || "").toLowerCase();
   if (key === "allowed") return '<span class="badge ok">正常</span>';
@@ -201,9 +210,20 @@ async function loadStatus() {
     var data = await resp.json();
     var cfg = data.config || {};
     var chips = document.getElementById("chips");
+    var providers = cfg.providers || {};
+    var providerChips = ["claude", "codex"].map(function (id) {
+      var entry = providers[id];
+      if (!entry) return "";
+      var label = id === "claude" ? "Claude" : "Codex";
+      if (!entry.enabled) {
+        return '<span class="chip">' + label + " <b>未启用</b></span>";
+      }
+      return '<span class="chip">' + label + " 锚点 <b>" +
+        esc((entry.anchors || []).join(" / ") || "-") + "</b></span>";
+    }).join("");
     chips.innerHTML =
       '<span class="chip">时区 <b>' + esc(cfg.timezone || "-") + "</b></span>" +
-      '<span class="chip">锚点 <b>' + esc((cfg.anchors || []).join(" / ") || "-") + "</b></span>" +
+      providerChips +
       '<span class="chip">当前 <b>' + fmt(data.now) + "</b></span>" +
       (cfg.dry_run ? '<span class="chip warn">演练模式 · 不会真正发请求</span>' : "") +
       (managementKey() ? "" : '<span class="chip warn">未读取到管理密钥 · 锚定时需手动输入</span>');
@@ -216,6 +236,7 @@ async function loadStatus() {
       if (row.disabled) tr.className = "disabled";
       tr.innerHTML =
         "<td>" + esc(row.label || row.id) + "</td>" +
+        "<td>" + providerBadge(row.provider) + "</td>" +
         '<td class="mono">' + fmt(row.resets_at) + "</td>" +
         "<td>" + statusBadge(row.status) + "</td>" +
         '<td class="mono">' + fmt(row.seven_day_reset) + "</td>" +

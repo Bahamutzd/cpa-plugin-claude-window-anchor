@@ -128,16 +128,23 @@ func handleAnchorNow(req managementRequest) ([]byte, error) {
 	}
 
 	filter := ""
+	providerFilter := ""
 	for key, values := range req.Query {
-		if strings.EqualFold(key, "account") && len(values) > 0 {
+		if len(values) == 0 {
+			continue
+		}
+		switch {
+		case strings.EqualFold(key, "account"):
 			filter = strings.TrimSpace(values[0])
+		case strings.EqualFold(key, "provider"):
+			providerFilter = normalizeProvider(values[0])
 		}
 	}
 
 	cfg := configStore.Load()
-	var accounts []claudeAccount
+	var accounts []anchoredAccount
 	if cfg != nil {
-		accounts = listClaudeAccounts()
+		accounts = listAnchorAccounts()
 	} else {
 		return okResult(managementResponse{
 			StatusCode: http.StatusServiceUnavailable,
@@ -148,10 +155,18 @@ func handleAnchorNow(req managementRequest) ([]byte, error) {
 
 	anchored := []string{}
 	for _, account := range accounts {
+		// A manual anchor still honours the provider switch: firing at a
+		// provider the operator disabled would spend quota they opted out of.
+		if !cfg.providerEnabled(account.Provider) {
+			continue
+		}
 		if !cfg.appliesTo(account.ID) {
 			continue
 		}
 		if filter != "" && account.ID != filter {
+			continue
+		}
+		if providerFilter != "" && account.Provider != providerFilter {
 			continue
 		}
 		// Force: anchor now regardless of schedule state.
@@ -177,6 +192,7 @@ func anchorStatusJSON() []byte {
 	snapshot := allAccountsSnapshots()
 	type accountView struct {
 		ID               string `json:"id"`
+		Provider         string `json:"provider,omitempty"`
 		AuthIndex        string `json:"auth_index"`
 		Label            string `json:"label"`
 		Status           string `json:"status"`
@@ -194,6 +210,7 @@ func anchorStatusJSON() []byte {
 	for _, entry := range snapshot {
 		view := accountView{
 			ID:        entry.AuthID,
+			Provider:  entry.Provider,
 			AuthIndex: entry.AuthIndex,
 			Label:     entry.Label,
 			Status:    entry.Status,
@@ -220,16 +237,35 @@ func anchorStatusJSON() []byte {
 
 	var configView map[string]any
 	if cfg != nil {
+		providersView := make(map[string]any, len(providerSpecs))
+		for id := range providerSpecs {
+			anchors := cfg.Anchors
+			if _, overridden := cfg.providerAnchors[id]; overridden {
+				switch id {
+				case providerClaude:
+					anchors = cfg.Providers.Claude.Anchors
+				case providerCodex:
+					anchors = cfg.Providers.Codex.Anchors
+				}
+			}
+			providersView[id] = map[string]any{
+				"enabled": cfg.providerEnabled(id),
+				"anchors": anchors,
+				"model":   cfg.modelFor(id),
+			}
+		}
 		configView = map[string]any{
-			"timezone":          cfg.Timezone,
-			"anchors":           cfg.Anchors,
-			"grace_period":      cfg.GracePeriod,
-			"max_deferral":      cfg.MaxDeferral,
-			"scheduler_mode":    cfg.Scheduler.Mode,
-			"model":             cfg.Model,
-			"dry_run":           cfg.DryRun,
-			"enabled":           cfg.Enabled,
-			"oauth_usage_probe": cfg.OAuthUsageProbe,
+			"timezone":             cfg.Timezone,
+			"anchors":              cfg.Anchors,
+			"grace_period":         cfg.GracePeriod,
+			"max_deferral":         cfg.MaxDeferral,
+			"scheduler_mode":       cfg.Scheduler.Mode,
+			"model":                cfg.Model,
+			"dry_run":              cfg.DryRun,
+			"enabled":              cfg.Enabled,
+			"oauth_usage_probe":    cfg.OAuthUsageProbe,
+			"providers":            providersView,
+			"codex_window_minutes": cfg.CodexWindowMinutes,
 		}
 	}
 

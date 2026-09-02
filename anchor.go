@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -17,20 +16,6 @@ const (
 	maxAnchorRetries = 5
 	anchorRetryBase  = 30 * time.Second
 )
-
-// anchorRequestBody builds the minimal Claude messages body. max_tokens 1
-// and a one-character prompt keep the request to a few tokens while still
-// registering as the first request of the new window.
-func anchorRequestBody(cfg *Config) []byte {
-	body, _ := json.Marshal(map[string]any{
-		"model":      cfg.Model,
-		"max_tokens": cfg.MaxTokens,
-		"messages": []map[string]any{
-			{"role": "user", "content": cfg.Prompt},
-		},
-	})
-	return body
-}
 
 // hostModelExecutionRequest mirrors pluginapi.HostModelExecutionRequest plus
 // the optional host_callback_id. The request has json tags; headers carry the
@@ -52,7 +37,12 @@ type hostModelExecutionResponse struct {
 // The request is routed by the Scheduler capability (when claimed) to the
 // account's auth via X-Window-Anchor-Auth-Id; in single-account mode the
 // built-in scheduler picks its own credential.
-func anchorAccount(ctx context.Context, cfg *Config, account claudeAccount, slotKey windowKey, anchorTime time.Time) {
+func anchorAccount(ctx context.Context, cfg *Config, account anchoredAccount, slotKey windowKey, anchorTime time.Time) {
+	spec, okSpec := specFor(account.Provider)
+	if !okSpec {
+		return
+	}
+
 	// fireAt is the moment this slot becomes actionable. The loop passes only
 	// due slots, so fireAt is at or before now; if it is still in the future
 	// (a slot deferred to reset+grace), wait until then.
@@ -64,17 +54,20 @@ func anchorAccount(ctx context.Context, cfg *Config, account claudeAccount, slot
 		return
 	}
 
+	model := cfg.modelFor(spec.ID)
 	if cfg.DryRun {
 		logInfo("dry-run anchor", map[string]any{
-			"auth_id": account.ID,
-			"slot":    string(slotKey),
-			"time":    fireAt.Format(time.RFC3339),
+			"auth_id":  account.ID,
+			"provider": spec.ID,
+			"model":    model,
+			"slot":     string(slotKey),
+			"time":     fireAt.Format(time.RFC3339),
 		})
 		markAnchored(account.ID, string(slotKey), fireAt)
 		return
 	}
 
-	body := anchorRequestBody(cfg)
+	body := spec.buildBody(cfg, model)
 	headers := http.Header{}
 	if cfg.Scheduler.Header != "" && account.ID != "" {
 		headers.Set(cfg.Scheduler.Header, account.ID)
@@ -82,9 +75,9 @@ func anchorAccount(ctx context.Context, cfg *Config, account claudeAccount, slot
 
 	req := hostModelExecutionRequest{
 		HostModelExecutionRequest: pluginapi.HostModelExecutionRequest{
-			EntryProtocol: "claude",
-			ExitProtocol:  "claude",
-			Model:         cfg.Model,
+			EntryProtocol: spec.EntryProtocol,
+			ExitProtocol:  spec.ExitProtocol,
+			Model:         model,
 			Stream:        false, // host rejects stream=true
 			Body:          body,
 			Headers:       headers,
@@ -104,6 +97,7 @@ func anchorAccount(ctx context.Context, cfg *Config, account claudeAccount, slot
 	markAnchored(account.ID, string(slotKey), fireAt)
 	logInfo("anchor succeeded", map[string]any{
 		"auth_id":     account.ID,
+		"provider":    spec.ID,
 		"slot":        string(slotKey),
 		"status_code": resp.StatusCode,
 		// The new resets_at arrives asynchronously via usage.handle; the

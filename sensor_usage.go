@@ -3,20 +3,8 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
-)
-
-// Exact header names for Anthropic's unified rate-limit headers. The 5h
-// rolling window is "anthropic-ratelimit-unified-reset"; the weekly limit is
-// "anthropic-ratelimit-unified-7d-reset". Never match by prefix — the 7d
-// value would corrupt the scheduling decision.
-const (
-	headerUnifiedReset    = "Anthropic-Ratelimit-Unified-Reset"
-	headerUnifiedStatus   = "Anthropic-Ratelimit-Unified-Status"
-	headerUnified7DReset  = "Anthropic-Ratelimit-Unified-7d-Reset"
-	headerUnified7DStatus = "Anthropic-Ratelimit-Unified-7d-Status"
 )
 
 // usageRecord is the pluginapi.UsageRecord wire shape. pluginapi.UsageRecord
@@ -31,9 +19,9 @@ type usageRecord struct {
 	ResponseHeaders map[string][]string `json:"ResponseHeaders"`
 }
 
-// handleUsage is the Tier 1 sensor: every Claude request (organic user
-// traffic and our own anchor requests) lands here with the unfiltered
-// upstream response headers and the AuthID that served it.
+// handleUsage is the Tier 1 sensor: every request for a supported provider
+// (organic user traffic and our own anchor requests) lands here with the
+// unfiltered upstream response headers and the AuthID that served it.
 //
 // host.model.execute responses hide headers behind the passthrough-headers
 // config (default false), and the host skips a plugin's own response
@@ -48,7 +36,11 @@ func handleUsage(raw []byte) ([]byte, error) {
 			return okResult(struct{}{})
 		}
 	}
-	if !strings.EqualFold(record.Provider, "claude") || record.AuthID == "" {
+	if record.AuthID == "" {
+		return okResult(struct{}{})
+	}
+	spec, okSpec := specFor(record.Provider)
+	if !okSpec {
 		return okResult(struct{}{})
 	}
 
@@ -59,33 +51,21 @@ func handleUsage(raw []byte) ([]byte, error) {
 		}
 	}
 
-	// Weekly (7d) limit is tracked for display only — observe it first so a
-	// 7d-only response still records the weekly window, never let it influence
+	cfg := configStore.Load()
+	observation, okObserve := spec.observeUsage(cfg, headers)
+	if !okObserve {
+		return okResult(struct{}{})
+	}
+
+	// The longer window is recorded first so a response that carries only the
+	// weekly figure still updates the display, but it never influences
 	// five-hour scheduling.
-	if reset7dRaw := strings.TrimSpace(headers.Get(headerUnified7DReset)); reset7dRaw != "" {
-		epoch7d, err7d := strconv.ParseInt(reset7dRaw, 10, 64)
-		if err7d == nil && epoch7d > 0 {
-			observeSevenDayReset(record.AuthID, unixTime(epoch7d),
-				strings.TrimSpace(headers.Get(headerUnified7DStatus)))
-		}
+	if !observation.SecondaryReset.IsZero() {
+		observeSevenDayReset(record.AuthID, observation.SecondaryReset, observation.SecondaryStatus)
 	}
-
-	// Exact key match on the 5h reset.
-	resetRaw := strings.TrimSpace(headers.Get(headerUnifiedReset))
-	if resetRaw == "" {
-		return okResult(struct{}{})
+	if !observation.ResetsAt.IsZero() {
+		observeReset(record.AuthID, observation.ResetsAt, observation.Status)
 	}
-	epoch, errParse := strconv.ParseInt(resetRaw, 10, 64)
-	if errParse != nil || epoch <= 0 {
-		logDebug("invalid unified reset value", map[string]any{
-			"auth_id": record.AuthID,
-			"value":   resetRaw,
-		})
-		return okResult(struct{}{})
-	}
-
-	status := strings.TrimSpace(headers.Get(headerUnifiedStatus))
-	observeReset(record.AuthID, unixTime(epoch), status)
 
 	return okResult(struct{}{})
 }
@@ -94,4 +74,9 @@ func handleUsage(raw []byte) ([]byte, error) {
 // for unit-test injection.
 var unixTime = func(epoch int64) time.Time {
 	return time.Unix(epoch, 0).UTC()
+}
+
+// normalizeProvider lowercases and trims a host provider identifier.
+func normalizeProvider(provider string) string {
+	return strings.ToLower(strings.TrimSpace(provider))
 }
