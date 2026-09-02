@@ -12,7 +12,7 @@ set -euo pipefail
 #   ./build.sh package          # zip dist artifacts into plugin-store packages + checksums.txt
 #   CGO_CC=<cc> ./build.sh      # pick the C compiler explicitly
 
-VERSION="${VERSION:-0.1.2}"
+VERSION="${VERSION:-0.1.3}"
 PLUGIN_ID="claude-window-anchor"
 OUT="${OUT:-dist}"
 MODE="${1:-build}"

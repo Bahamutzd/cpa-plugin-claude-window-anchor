@@ -114,6 +114,8 @@ tr.disabled td { opacity: .5; }
 "use strict";
 var ENC_PREFIX = "enc::v1::";
 var SECURE = "cli-proxy-api-webui::secure-storage";
+var AUTH_STORE = "cli-proxy-auth";
+var MANUAL_KEY = "claude-window-anchor::management-key";
 
 function xorKeyBytes() {
   return new TextEncoder().encode(SECURE + "|" + window.location.host + "|" + navigator.userAgent);
@@ -130,16 +132,38 @@ function deobfuscate(raw) {
   }
   return new TextDecoder().decode(out);
 }
-function managementKey() {
-  var raw = localStorage.getItem("managementKey");
-  if (!raw) return "";
+// readStored decodes one localStorage entry written by the management UI's
+// secure storage wrapper: obfuscated payload, then JSON.
+function readStored(key) {
+  var raw = localStorage.getItem(key);
+  if (!raw) return null;
   var text = deobfuscate(raw);
   try {
-    var parsed = JSON.parse(text);
-    return typeof parsed === "string" ? parsed : "";
+    return JSON.parse(text);
   } catch (e) {
-    return text || "";
+    return text;
   }
+}
+// managementKey resolves the console's saved key. The current UI persists it
+// inside the zustand store "cli-proxy-auth" (only when "remember password" is
+// on); "managementKey" is the pre-migration standalone key. A manual entry is
+// cached in sessionStorage for sessions where neither exists.
+function managementKey() {
+  var auth = readStored(AUTH_STORE);
+  if (auth && auth.state && typeof auth.state.managementKey === "string" && auth.state.managementKey) {
+    return auth.state.managementKey;
+  }
+  var legacy = readStored("managementKey");
+  if (typeof legacy === "string" && legacy) return legacy;
+  return sessionStorage.getItem(MANUAL_KEY) || "";
+}
+// promptForKey asks for the key once when the console did not persist it.
+function promptForKey() {
+  var entered = window.prompt("请输入管理密钥（未勾选“记住密码”时需手动输入，仅保存在本页会话中）", "");
+  if (entered === null) return "";
+  entered = entered.trim();
+  if (entered) sessionStorage.setItem(MANUAL_KEY, entered);
+  return entered;
 }
 function authHeaders() {
   var key = managementKey();
@@ -181,7 +205,8 @@ async function loadStatus() {
       '<span class="chip">时区 <b>' + esc(cfg.timezone || "-") + "</b></span>" +
       '<span class="chip">锚点 <b>' + esc((cfg.anchors || []).join(" / ") || "-") + "</b></span>" +
       '<span class="chip">当前 <b>' + fmt(data.now) + "</b></span>" +
-      (cfg.dry_run ? '<span class="chip warn">演练模式 · 不会真正发请求</span>' : "");
+      (cfg.dry_run ? '<span class="chip warn">演练模式 · 不会真正发请求</span>' : "") +
+      (managementKey() ? "" : '<span class="chip warn">未读取到管理密钥 · 锚定时需手动输入</span>');
     var rows = data.accounts || [];
     var tbody = document.getElementById("tbody");
     tbody.innerHTML = "";
@@ -211,8 +236,8 @@ async function loadStatus() {
   }
 }
 async function doAnchor(id) {
-  if (!managementKey()) {
-    setMsg("未读取到管理密钥。请确认已在管理中心登录（勾选记住密码）。", true);
+  if (!managementKey() && !promptForKey()) {
+    setMsg("需要管理密钥才能触发锚定。", true);
     return;
   }
   setMsg("正在触发锚定：" + (id || "全部账号"));
@@ -220,7 +245,8 @@ async function doAnchor(id) {
     var url = "/v0/management/claude-window-anchor/anchor-now" + (id ? "?account=" + encodeURIComponent(id) : "");
     var resp = await fetch(url, { method: "POST", headers: authHeaders() });
     if (resp.status === 401 || resp.status === 403) {
-      setMsg("管理密钥无效或已过期，请重新登录管理中心。", true);
+      sessionStorage.removeItem(MANUAL_KEY);
+      setMsg("管理密钥无效或已过期，请重新登录管理中心或重试并输入正确密钥。", true);
       return;
     }
     if (!resp.ok) throw new Error("HTTP " + resp.status);
