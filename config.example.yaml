@@ -1,0 +1,75 @@
+# claude-window-anchor plugin configuration.
+# Copy this block into config.yaml under plugins.configs.claude-window-anchor.
+
+plugins:
+  enabled: true
+  dir: "plugins"
+  configs:
+    claude-window-anchor:
+      enabled: true
+      priority: 50
+
+      # Timezone for all anchor times. The IANA database is embedded in the
+      # plugin, so Alpine/scratch containers work without extra packages.
+      timezone: "Asia/Shanghai"
+
+      # Anchor slots (HH:MM in the timezone above). The plugin sends one
+      # minimal request right after the real 5-hour window resets near each
+      # slot, pinning the next window to this time.
+      anchors:
+        - "06:30"
+        - "11:30"
+        - "16:30"
+
+      # How long after the real reset to wait before anchoring (avoids
+      # racing the server-side window boundary).
+      grace-period: "90s"
+      # If the real window would reset much later than the anchor (someone
+      # used Claude right before the slot), skip rather than waste quota.
+      max-deferral: "60m"
+      # Restart/suspend compensation: re-fire a missed slot within this window.
+      catch-up-window: "45m"
+      # How often to re-evaluate the schedule.
+      poll-interval: "30s"
+      # Delay between accounts to avoid simultaneous bursts.
+      account-stagger: "5s"
+
+      # Anchor request payload. Keep it tiny: max-tokens 1 + a one-char prompt
+      # costs a few tokens while still registering as the window's first call.
+      model: "claude-haiku-4-5-20251001"
+      max-tokens: 1
+      prompt: "."
+
+      # Multi-account targeting.
+      #   auto   - declare the Scheduler capability only when more than one
+      #            account is tracked (avoids claiming the host's single
+      #            scheduler slot when it is not needed).
+      #   always - always claim the Scheduler slot.
+      #   never  - never claim it; the built-in scheduler picks the account
+      #            and the plugin records whichever one served the request.
+      scheduler:
+        mode: "auto"
+        header: "X-Window-Anchor-Auth-Id"
+
+      # Account selection (empty include = all Claude OAuth accounts).
+      accounts:
+        include: []
+        exclude: []
+        overrides:
+          - id: "claude-work@example.com"
+            # anchors: ["09:00", "14:00"]
+            # enabled: true
+
+      # Actively query api.anthropic.com/api/oauth/usage for each account.
+      # Best-effort: the host's plain HTTP client may be blocked by the
+      # endpoint's Cloudflare protection. The passive usage sensor is the
+      # primary source and needs no network probe.
+      oauth-usage-probe: false
+      # Send one minimal anchor request per account at plugin start to harvest
+      # the current reset header (costs a few tokens per account per restart).
+      probe-on-start: false
+      # Persist the anchor ledger across restarts (prevents double-anchoring
+      # after a restart). Empty = memory only.
+      state-file: ""
+      # Log decisions but never send requests. Perfect for first-time setup.
+      dry-run: false

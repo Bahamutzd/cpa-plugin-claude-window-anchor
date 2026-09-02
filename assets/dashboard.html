@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Window Anchor</title>
+<style>
+:root { color-scheme: light dark; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; line-height: 1.5; color: #1f2933; }
+h1 { font-size: 1.4rem; }
+table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+th, td { border: 1px solid #d1d5db; padding: .5rem .75rem; text-align: left; }
+th { background: #f3f4f6; }
+tr.disabled td { opacity: .5; }
+.mono { font-family: ui-monospace, Consolas, monospace; font-size: .85rem; }
+.ok { color: #15803d; }
+.warn { color: #b45309; }
+.err { color: #b42318; }
+button { margin-top: 1rem; padding: .5rem 1rem; cursor: pointer; }
+#msg { margin-top: 1rem; font-size: .9rem; }
+footer { margin-top: 2rem; font-size: .8rem; color: #6b7280; }
+</style>
+</head>
+<body>
+<main>
+<h1>Claude Window Anchor</h1>
+<p id="meta">Loading&hellip;</p>
+<table id="accounts">
+<thead>
+<tr><th>Account</th><th>5h Reset</th><th>Status</th><th>7d Reset</th><th>Last Anchor</th><th>Error</th><th></th></tr>
+</thead>
+<tbody></tbody>
+</table>
+<p>
+<button id="refresh">Refresh</button>
+<button id="anchorAll">Anchor Now (all)</button>
+</p>
+<p id="msg"></p>
+</main>
+<script>
+"use strict";
+function esc(value) {
+  var div = document.createElement("div");
+  div.textContent = String(value == null ? "" : value);
+  return div.innerHTML;
+}
+function fmt(value) {
+  if (!value) return "-";
+  var date = new Date(value);
+  if (isNaN(date.getTime())) return esc(value);
+  return esc(date.toLocaleString());
+}
+async function loadStatus() {
+  try {
+    var resp = await fetch("status-data");
+    if (!resp.ok) throw new Error("status " + resp.status);
+    var data = await resp.json();
+    var meta = document.getElementById("meta");
+    meta.textContent = "Timezone " + (data.config && data.config.timezone ? data.config.timezone : "-")
+      + " · Anchors " + esc((data.config && data.config.anchors || []).join(", "))
+      + " · Now " + new Date(data.now).toLocaleString();
+    var tbody = document.querySelector("#accounts tbody");
+    tbody.innerHTML = "";
+    (data.accounts || []).forEach(function(row) {
+      var tr = document.createElement("tr");
+      if (row.disabled) tr.className = "disabled";
+      var cells = [
+        esc(row.label || row.id),
+        fmt(row.resets_at),
+        esc(row.status || "-"),
+        fmt(row.seven_day_reset),
+        row.last_anchored_slot ? (esc(row.last_anchored_slot) + "<br>" + fmt(row.last_anchor_time)) : "-",
+        row.last_anchor_error ? '<span class="err">' + esc(row.last_anchor_error) + '</span>' : "-"
+      ];
+      cells.forEach(function(html) {
+        var td = document.createElement("td");
+        td.innerHTML = html;
+        if (td.textContent === "-") td.className = "mono";
+        tr.appendChild(td);
+      });
+      var actionTd = document.createElement("td");
+      actionTd.appendChild(anchorButton(row.id));
+      tr.appendChild(actionTd);
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    document.getElementById("msg").textContent = "Failed to load: " + err.message;
+  }
+}
+function anchorButton(id) {
+  var btn = document.createElement("button");
+  btn.textContent = "Anchor";
+  btn.onclick = function() { doAnchor(id); };
+  return btn;
+}
+async function doAnchor(id) {
+  var url = "/v0/management/claude-window-anchor/anchor-now" + (id ? "?account=" + encodeURIComponent(id) : "");
+  var msg = document.getElementById("msg");
+  msg.textContent = "Triggering anchor for " + (id || "all accounts") + "&hellip;";
+  try {
+    var resp = await fetch(url, { method: "POST" });
+    if (resp.status === 401 || resp.status === 403) {
+      msg.textContent = "Anchor requires the CPA management key (add X-Management-Key or Bearer token to this request).";
+      return;
+    }
+    var data = await resp.json();
+    msg.textContent = "Triggered: " + JSON.stringify(data);
+    loadStatus();
+  } catch (err) {
+    msg.textContent = "Anchor failed: " + err.message;
+  }
+}
+document.getElementById("refresh").onclick = loadStatus;
+document.getElementById("anchorAll").onclick = function() { doAnchor(""); };
+loadStatus();
+setInterval(loadStatus, 30000);
+</script>
+</body>
+</html>

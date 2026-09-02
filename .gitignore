@@ -1,0 +1,12 @@
+# Build artifacts
+*.dll
+*.so
+*.dylib
+*.h
+dist/
+*.zip
+checksums.txt
+
+# Local dev module stub (not committed; keeps checkout independent of CLIProxyAPI sibling)
+go.work
+go.work.sum
