@@ -64,17 +64,14 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/scripts/package-release.py \
-            --plugin-id "${PLUGIN_ID}" \
-            --version "${VERSION}" \
-            --dist dist
+            --library "dist/${{ matrix.goos }}/${{ matrix.goarch }}/${LIB_NAME}" \
+            --archive "${ARCHIVE_NAME}"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARCHIVE_NAME }}
-          path: |
-            ${{ env.ARCHIVE_NAME }}
-            checksums.txt
+          path: ${{ env.ARCHIVE_NAME }}
           if-no-files-found: error
           retention-days: 7
 

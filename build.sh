@@ -37,12 +37,12 @@ if [ "$MODE" = "package" ]; then
     echo "error: $OUT missing; run ./build.sh first" >&2
     exit 1
   fi
-  if command -v python3 >/dev/null 2>&1; then
+  if command -v python3 >/dev/null 2>&1 && python3 -c "import zipfile" >/dev/null 2>&1; then
     PY=python3
-  elif command -v python >/dev/null 2>&1; then
+  elif command -v python >/dev/null 2>&1 && python -c "import zipfile" >/dev/null 2>&1; then
     PY=python
   else
-    echo "python/python3 not found (needed for 'package')" >&2
+    echo "python/python3 with zipfile support not found (needed for 'package')" >&2
     exit 1
   fi
   "$PY" .github/scripts/package-release.py \
