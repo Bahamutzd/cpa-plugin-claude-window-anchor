@@ -52,8 +52,8 @@ func handleManagementRegister(raw []byte) ([]byte, error) {
 		Resources: []resourceRoute{
 			{
 				Path:        "dashboard",
-				Menu:        "Claude Window Anchor",
-				Description: "Claude 5-hour window anchor status dashboard",
+				Menu:        "额度窗口锚定",
+				Description: "Claude 5 小时额度窗口锚定状态",
 			},
 			{
 				// Browser-accessible JSON endpoint backing the dashboard.

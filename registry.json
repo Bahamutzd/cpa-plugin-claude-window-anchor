@@ -6,7 +6,7 @@
       "name": "Claude Window Anchor",
       "description": "Anchors Claude 5-hour rolling quota windows to fixed local times by sending a minimal request right after the real window reset, keeping heavy usage inside fresh windows.",
       "author": "Bahamutzd",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "repository": "https://github.com/Bahamutzd/cpa-plugin-claude-window-anchor",
       "homepage": "https://github.com/Bahamutzd/cpa-plugin-claude-window-anchor",
       "license": "MIT",
