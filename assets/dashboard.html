@@ -84,12 +84,163 @@ tr.disabled td { opacity: .5; }
 .codex { background: #0ea5e91f; color: #075985; }
 .empty, #msg { color: var(--text-secondary); font-size: 13px; padding: 18px 12px; }
 #msg { padding: 10px 0 0; }
+
+/* Configuration panel */
+.panel { margin-bottom: 16px; }
+.panel > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--floating-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  user-select: none;
+}
+.panel > summary::-webkit-details-marker { display: none; }
+.panel > summary::before { content: "▸ "; color: var(--text-tertiary); }
+.panel[open] > summary { border-radius: 12px 12px 0 0; border-bottom: 0; }
+.panel[open] > summary::before { content: "▾ "; }
+.panel-body {
+  background: var(--floating-surface);
+  border: 1px solid var(--border-color);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  padding: 4px 14px 14px;
+  box-shadow: var(--shadow);
+}
+.grp { padding: 12px 0; border-bottom: 1px solid var(--border-color); }
+.grp:last-of-type { border-bottom: 0; }
+.grp > h4 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.row > label { font-size: 13px; color: var(--text-secondary); min-width: 76px; }
+input[type="text"], select {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 9px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+input[type="text"] { width: 150px; }
+input[type="text"].wide { width: 230px; }
+input[type="time"] {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.slots { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 3px 6px 3px 10px;
+}
+.slot button {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-tertiary);
+  padding: 0 4px;
+  font-size: 15px;
+  line-height: 1;
+}
+.slot button:hover { background: transparent; color: var(--warning-color); }
+.hint { font-size: 12px; color: var(--text-tertiary); margin: 4px 0 0; }
+.inherit { font-size: 12px; color: var(--text-tertiary); }
+.actions { display: flex; align-items: center; gap: 10px; padding-top: 14px; }
+#cfgMsg { font-size: 13px; color: var(--text-secondary); }
+label.check { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--text-primary); }
 </style>
 </head>
 <body>
 <h1>额度窗口锚定</h1>
 <p class="sub">把 Claude 5 小时滚动窗口钉在固定本地时间。仅在真实窗口结束后发送极小请求。</p>
 <div class="chips" id="chips"></div>
+<details class="panel" id="cfgPanel">
+<summary>配置</summary>
+<div class="panel-body">
+
+  <div class="grp">
+    <h4>通用</h4>
+    <div class="row">
+      <label for="tz">时区</label>
+      <input type="text" id="tz" class="wide" placeholder="Asia/Shanghai">
+      <label class="check"><input type="checkbox" id="dryRun"> 演练模式（只记日志，不发请求）</label>
+    </div>
+    <div class="row">
+      <label>默认锚点</label>
+      <div class="slots" id="globalSlots"></div>
+    </div>
+    <p class="hint">未单独设置锚点的服务使用这组时间。</p>
+  </div>
+
+  <div class="grp">
+    <h4>Claude</h4>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="claudeEnabled"> 启用锚定</label>
+      <label for="claudeModel">模型</label>
+      <input type="text" id="claudeModel" class="wide" placeholder="claude-haiku-4-5-20251001">
+    </div>
+    <div class="row">
+      <label>专属锚点</label>
+      <div class="slots" id="claudeSlots"></div>
+    </div>
+  </div>
+
+  <div class="grp">
+    <h4>Codex</h4>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="codexEnabled"> 启用锚定</label>
+      <label for="codexModel">模型</label>
+      <input type="text" id="codexModel" class="wide" placeholder="gpt-5.4-mini">
+    </div>
+    <div class="row">
+      <label>专属锚点</label>
+      <div class="slots" id="codexSlots"></div>
+    </div>
+    <p class="hint">Codex 每次响应会给出多个额度窗口，其中名为 primary 的往往是周窗口，因此按时长匹配 5 小时窗口。</p>
+    <div class="row">
+      <label for="codexWin">窗口时长</label>
+      <input type="text" id="codexWin" placeholder="300"> <span class="inherit">分钟</span>
+    </div>
+  </div>
+
+  <div class="grp">
+    <h4>时间参数</h4>
+    <div class="row">
+      <label for="grace">重置后等待</label>
+      <input type="text" id="grace" placeholder="90s">
+      <label for="maxDefer">最长推迟</label>
+      <input type="text" id="maxDefer" placeholder="60m">
+    </div>
+    <div class="row">
+      <label for="catchUp">补发窗口</label>
+      <input type="text" id="catchUp" placeholder="45m">
+      <label for="poll">检查间隔</label>
+      <input type="text" id="poll" placeholder="30s">
+    </div>
+    <p class="hint">格式如 90s、45m、1h。留空使用默认值。</p>
+  </div>
+
+  <div class="actions">
+    <button id="cfgSave" class="primary" type="button">保存</button>
+    <button id="cfgReload" type="button">重新载入</button>
+    <span id="cfgMsg"></span>
+  </div>
+</div>
+</details>
+
 <div class="toolbar">
   <button id="refresh" type="button">刷新</button>
   <button id="anchorAll" class="primary" type="button">立即锚定全部</button>
@@ -279,6 +430,207 @@ async function doAnchor(id) {
     setMsg("锚定失败：" + err.message, true);
   }
 }
+/* ---------- configuration panel ---------- */
+
+var CONFIG_URL = "/v0/management/plugins/claude-window-anchor/config";
+// Anchor lists are edited as chips rather than raw JSON, so each list lives
+// here and is re-rendered on every change.
+var slotState = { global: [], claude: [], codex: [] };
+
+function setCfgMsg(text, isError) {
+  var el = document.getElementById("cfgMsg");
+  el.textContent = text || "";
+  el.style.color = isError ? "#8a3a30" : "";
+}
+function el(id) { return document.getElementById(id); }
+
+// renderSlots draws one anchor list as removable chips plus an "add" control.
+function renderSlots(key, containerId) {
+  var box = el(containerId);
+  box.innerHTML = "";
+  slotState[key].forEach(function (value, index) {
+    var chip = document.createElement("span");
+    chip.className = "slot";
+    var text = document.createElement("span");
+    text.textContent = value;
+    var remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.title = "删除";
+    remove.onclick = function () {
+      slotState[key].splice(index, 1);
+      renderSlots(key, containerId);
+    };
+    chip.appendChild(text);
+    chip.appendChild(remove);
+    box.appendChild(chip);
+  });
+
+  var picker = document.createElement("input");
+  picker.type = "time";
+  var add = document.createElement("button");
+  add.type = "button";
+  add.className = "small";
+  add.textContent = "添加";
+  add.onclick = function () {
+    var value = (picker.value || "").trim();
+    if (!value) { return; }
+    if (slotState[key].indexOf(value) >= 0) {
+      setCfgMsg("锚点 " + value + " 已存在", true);
+      return;
+    }
+    slotState[key].push(value);
+    slotState[key].sort();
+    renderSlots(key, containerId);
+    setCfgMsg("");
+  };
+  box.appendChild(picker);
+  box.appendChild(add);
+  if (key !== "global" && slotState[key].length === 0) {
+    var note = document.createElement("span");
+    note.className = "inherit";
+    note.textContent = "未设置，使用默认锚点";
+    box.appendChild(note);
+  }
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value.filter(function (v) { return typeof v === "string"; }) : [];
+}
+
+async function loadConfig() {
+  if (!managementKey() && !promptForKey()) {
+    setCfgMsg("需要管理密钥才能读取配置。", true);
+    return;
+  }
+  setCfgMsg("正在载入…");
+  try {
+    var resp = await fetch(CONFIG_URL, { headers: authHeaders() });
+    if (resp.status === 401 || resp.status === 403) {
+      sessionStorage.removeItem(MANUAL_KEY);
+      setCfgMsg("管理密钥无效，请重试。", true);
+      return;
+    }
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    var cfg = await resp.json();
+    var providers = cfg.providers || {};
+    var claude = providers.claude || {};
+    var codex = providers.codex || {};
+
+    el("tz").value = cfg.timezone || "";
+    el("dryRun").checked = cfg["dry-run"] === true;
+    // Claude defaults to on; only an explicit false disables it.
+    el("claudeEnabled").checked = claude.enabled !== false;
+    el("claudeModel").value = claude.model || cfg.model || "";
+    el("codexEnabled").checked = codex.enabled === true;
+    el("codexModel").value = codex.model || "";
+    el("codexWin").value = cfg["codex-window-minutes"] || "";
+    el("grace").value = cfg["grace-period"] || "";
+    el("maxDefer").value = cfg["max-deferral"] || "";
+    el("catchUp").value = cfg["catch-up-window"] || "";
+    el("poll").value = cfg["poll-interval"] || "";
+
+    slotState.global = asArray(cfg.anchors);
+    slotState.claude = asArray(claude.anchors);
+    slotState.codex = asArray(codex.anchors);
+    renderSlots("global", "globalSlots");
+    renderSlots("claude", "claudeSlots");
+    renderSlots("codex", "codexSlots");
+    setCfgMsg("");
+  } catch (err) {
+    setCfgMsg("载入失败：" + err.message, true);
+  }
+}
+
+// trimmedOrNull maps an empty input to null so PATCH deletes the key and the
+// plugin falls back to its own default instead of storing an empty string.
+function trimmedOrNull(id) {
+  var value = (el(id).value || "").trim();
+  return value === "" ? null : value;
+}
+
+async function saveConfig() {
+  if (!managementKey() && !promptForKey()) {
+    setCfgMsg("需要管理密钥才能保存。", true);
+    return;
+  }
+  if (slotState.global.length === 0) {
+    setCfgMsg("默认锚点不能为空。", true);
+    return;
+  }
+  var codexWindow = null;
+  var rawWindow = (el("codexWin").value || "").trim();
+  if (rawWindow !== "") {
+    codexWindow = parseInt(rawWindow, 10);
+    if (isNaN(codexWindow) || codexWindow <= 0) {
+      setCfgMsg("窗口时长必须是正整数分钟。", true);
+      return;
+    }
+  }
+
+  var body = {
+    timezone: trimmedOrNull("tz"),
+    anchors: slotState.global,
+    "dry-run": el("dryRun").checked,
+    "grace-period": trimmedOrNull("grace"),
+    "max-deferral": trimmedOrNull("maxDefer"),
+    "catch-up-window": trimmedOrNull("catchUp"),
+    "poll-interval": trimmedOrNull("poll"),
+    "codex-window-minutes": codexWindow,
+    // providers is replaced wholesale: PATCH merges only top-level keys, so a
+    // partial object here would leave stale nested values behind.
+    providers: {
+      claude: {
+        enabled: el("claudeEnabled").checked,
+        anchors: slotState.claude,
+        model: (el("claudeModel").value || "").trim()
+      },
+      codex: {
+        enabled: el("codexEnabled").checked,
+        anchors: slotState.codex,
+        model: (el("codexModel").value || "").trim()
+      }
+    }
+  };
+
+  setCfgMsg("正在保存…");
+  try {
+    var resp = await fetch(CONFIG_URL, {
+      method: "PATCH",
+      headers: authHeaders(),
+      body: JSON.stringify(body)
+    });
+    if (resp.status === 401 || resp.status === 403) {
+      sessionStorage.removeItem(MANUAL_KEY);
+      setCfgMsg("管理密钥无效，请重试。", true);
+      return;
+    }
+    if (!resp.ok) {
+      var detail = "";
+      try {
+        var errBody = await resp.json();
+        detail = errBody.message || errBody.error || "";
+      } catch (parseErr) {
+        detail = "";
+      }
+      throw new Error(detail || "HTTP " + resp.status);
+    }
+    setCfgMsg("已保存，插件正在热加载…");
+    // The host reloads the plugin asynchronously; re-read once it settles.
+    setTimeout(function () { loadStatus(); loadConfig(); }, 2500);
+  } catch (err) {
+    setCfgMsg("保存失败：" + err.message, true);
+  }
+}
+
+el("cfgSave").onclick = saveConfig;
+el("cfgReload").onclick = loadConfig;
+el("cfgPanel").addEventListener("toggle", function () {
+  if (el("cfgPanel").open && slotState.global.length === 0) {
+    loadConfig();
+  }
+});
+
 document.getElementById("refresh").onclick = loadStatus;
 document.getElementById("anchorAll").onclick = function () { doAnchor(""); };
 loadStatus();

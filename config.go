@@ -13,7 +13,7 @@ import (
 // Plugin identity constants. GitHubRepository must be non-empty for the host
 // to accept registration.
 const (
-	pluginVersion    = "0.2.0"
+	pluginVersion    = "0.2.1"
 	pluginAuthor     = "Bahamutzd"
 	pluginRepository = "https://github.com/Bahamutzd/cpa-plugin-claude-window-anchor"
 )
