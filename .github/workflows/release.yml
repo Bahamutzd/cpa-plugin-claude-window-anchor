@@ -87,21 +87,42 @@ jobs:
           merge-multiple: true
 
       - name: Assemble final checksums.txt
+        id: checksums
         run: |
           set -euo pipefail
           cd dist-artifacts
+          ls -la
           sha256sum *.zip | sort -k2 > checksums.txt
           cat checksums.txt
+
+      - name: Generate draft notes
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          {
+            echo "# claude-window-anchor v${VERSION}"
+            echo
+            echo "Anchors Claude 5-hour rolling quota windows to fixed local times."
+            echo
+            echo "## Assets"
+            echo
+            echo "- \`claude-window-anchor_${VERSION}_linux_amd64.zip\`"
+            echo "- \`claude-window-anchor_${VERSION}_linux_arm64.zip\`"
+            echo "- \`claude-window-anchor_${VERSION}_windows_amd64.zip\`"
+            echo "- \`checksums.txt\`"
+          } > release-notes.md
 
       - name: Create GitHub release and upload assets
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
+          ls -la dist-artifacts/
           gh release create "$GITHUB_REF_NAME" \
             "dist-artifacts/${PLUGIN_ID}_${VERSION}_linux_amd64.zip" \
             "dist-artifacts/${PLUGIN_ID}_${VERSION}_linux_arm64.zip" \
             "dist-artifacts/${PLUGIN_ID}_${VERSION}_windows_amd64.zip" \
             "dist-artifacts/checksums.txt" \
-            --generate-notes --title "$GITHUB_REF_NAME"
+            --notes-file release-notes.md \
+            --title "$GITHUB_REF_NAME"
         env:
           GH_TOKEN: ${{ github.token }}
