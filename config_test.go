@@ -34,9 +34,13 @@ func TestParseConfig_InvalidDurationFails(t *testing.T) {
 	}
 }
 
-func TestParseConfig_MissingAnchorsFails(t *testing.T) {
-	if _, err := parseConfig([]byte("timezone: \"UTC\"\n")); err == nil {
-		t.Fatal("expected missing anchors error")
+func TestParseConfig_MissingAnchorsUsesDefaultSlots(t *testing.T) {
+	cfg, err := parseConfig([]byte("timezone: \"UTC\"\n"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(cfg.Anchors) != 3 || cfg.Anchors[0] != "06:30" || cfg.Anchors[2] != "16:30" {
+		t.Fatalf("anchors = %v, want default 06:30/11:30/16:30", cfg.Anchors)
 	}
 }
 

@@ -161,7 +161,9 @@ func (c *Config) normalize() error {
 	}
 
 	if len(c.Anchors) == 0 {
-		return fmt.Errorf("anchors must contain at least one HH:MM value")
+		// Store install only writes enabled + store. Without a default the
+		// plugin fails register/reconfigure and stays registered:false.
+		c.Anchors = []string{"06:30", "11:30", "16:30"}
 	}
 	times, errParse := parseAnchors(c.Anchors)
 	if errParse != nil {
