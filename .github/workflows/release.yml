@@ -113,10 +113,13 @@ jobs:
           } > release-notes.md
 
       - name: Create GitHub release and upload assets
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
+          echo "== files to upload =="
           ls -la dist-artifacts/
+          echo "== creating release =="
           gh release create "$GITHUB_REF_NAME" \
             "dist-artifacts/${PLUGIN_ID}_${VERSION}_linux_amd64.zip" \
             "dist-artifacts/${PLUGIN_ID}_${VERSION}_linux_arm64.zip" \
@@ -126,3 +129,4 @@ jobs:
             --title "$GITHUB_REF_NAME"
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
