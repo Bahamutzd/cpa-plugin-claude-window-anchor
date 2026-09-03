@@ -325,6 +325,11 @@ function authHeaders() {
   if (key) headers.Authorization = "Bearer " + key;
   return headers;
 }
+// Status and config are served by key-protected management routes. The old
+// public /v0/resource/plugins/.../status-data was removed because it exposed
+// account indexes and quota details to anyone with the URL.
+var STATUS_URL = "/v0/management/claude-window-anchor/status";
+var CONFIG_URL = "/v0/management/plugins/claude-window-anchor/config";
 function esc(value) {
   var div = document.createElement("div");
   div.textContent = String(value == null ? "" : value);
@@ -356,7 +361,14 @@ function setMsg(text, isError) {
 }
 async function loadStatus() {
   try {
-    var resp = await fetch("status-data");
+    var resp = await fetch(STATUS_URL, { headers: authHeaders() });
+    if (resp.status === 401 || resp.status === 403) {
+      sessionStorage.removeItem(MANUAL_KEY);
+      setMsg(managementKey()
+        ? "管理密钥无效或已过期，请重新登录管理中心后刷新。"
+        : "未读取到管理密钥，无法获取状态。请先在管理中心登录（勾选记住密码）后刷新。", true);
+      return;
+    }
     if (!resp.ok) throw new Error("HTTP " + resp.status);
     var data = await resp.json();
     var cfg = data.config || {};
@@ -432,7 +444,6 @@ async function doAnchor(id) {
 }
 /* ---------- configuration panel ---------- */
 
-var CONFIG_URL = "/v0/management/plugins/claude-window-anchor/config";
 // Anchor lists are edited as chips rather than raw JSON, so each list lives
 // here and is re-rendered on every change.
 var slotState = { global: [], claude: [], codex: [] };

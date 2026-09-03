@@ -157,7 +157,11 @@ Once registered, the plugin appears in the CPA management center menu as
 ```
 
 It shows per-account 5h reset, weekly reset, last anchor status and next
-scheduled anchor. The dashboard is read-only in a plain browser; triggering an
+scheduled anchor. The dashboard HTML itself is browser-accessible by design;
+its data and every action (status JSON, anchor, config) require the
+management key, so open the page from the management center (or after
+logging in) rather than cold-navigating to it. The dashboard is read-only in
+a plain browser; triggering an
 immediate anchor is available via the management API (requires the management
 key):
 

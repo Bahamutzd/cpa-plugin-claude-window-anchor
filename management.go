@@ -45,8 +45,8 @@ type managementResponse struct {
 }
 
 // handleManagementRegister reports the plugin's management API surface.
-// The JSON dashboard resource is browser-accessible without a key; the
-// status JSON requires the management key.
+// Only the dashboard HTML is browser-accessible without a key; every JSON
+// endpoint requires the management key.
 func handleManagementRegister(raw []byte) ([]byte, error) {
 	return okResult(managementRegistrationResponse{
 		Resources: []resourceRoute{
@@ -54,13 +54,6 @@ func handleManagementRegister(raw []byte) ([]byte, error) {
 				Path:        "dashboard",
 				Menu:        "额度窗口锚定",
 				Description: "Claude 5 小时额度窗口锚定状态",
-			},
-			{
-				// Browser-accessible JSON endpoint backing the dashboard.
-				// It carries the same payload as the key-protected status
-				// route but is readable without a management key.
-				Path:        "status-data",
-				Description: "Window anchor status JSON (dashboard data source)",
 			},
 		},
 		Routes: []managementRoute{{
@@ -94,12 +87,6 @@ func handleManagementHandle(raw []byte) ([]byte, error) {
 			StatusCode: http.StatusOK,
 			Headers:    htmlContentType(),
 			Body:       renderDashboardHTML(),
-		})
-	case strings.HasSuffix(path, "/status-data"): // resource route, dashboard fetch target
-		return okResult(managementResponse{
-			StatusCode: http.StatusOK,
-			Headers:    jsonContentType(),
-			Body:       anchorStatusJSON(),
 		})
 	case strings.HasSuffix(path, "/status"):
 		return okResult(managementResponse{
